@@ -1,104 +1,107 @@
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::rc::Rc;
+use std::env;
 
-#[derive(Debug, PartialEq)]
-enum Color {
-    White,
-    Gray,
-    Black,
-}
-
-struct Data {
-    index: usize,
-    color: Color,
-    pi: Option<usize>,
-    d: Option<usize>,
-}
-
-struct Node {
-    data: Data,
-    edges: Vec<Rc<RefCell<Node>>>,
-}
-
-impl Node {
-    fn new(index: usize) -> Rc<RefCell<Node>> {
-        Rc::new(RefCell::new(Node {
-            data: Data {
-                index,
-                color: Color::White,
-                pi: None,
-                d: None,
-            },
-            edges: Vec::new(),
-        }))
-    }
-}
-
-fn init() -> Rc<RefCell<Node>> {
-    let root = Node::new(1);
-
-    let b = Node::new(2);
-    let c = Node::new(3);
-    let d = Node::new(4);
-    let e = Node::new(5);
-    let f = Node::new(6);
-
-    {
-        let mut mut_root = root.borrow_mut();
-        mut_root.edges.push(b);
-        mut_root.edges.push(c.clone());
-        mut_root.edges.push(d);
-
-        let mut mut_c = c.borrow_mut();
-        mut_c.edges.push(e);
-        mut_c.edges.push(f);
-        mut_c.edges.push(root.clone());
-    }
-
-    root
-}
-
-fn bfs(root: Rc<RefCell<Node>>, f: &dyn Fn(&Data)) {
-    {
-        let mut s = root.borrow_mut();
-        s.data.color = Color::Gray;
-        s.data.d = Some(0);
-    }
-
-    let mut queue = vec![root];
-    while !queue.is_empty() {
-        let u = queue.remove(0);
-        let mut u = u.borrow_mut();
-        f(&u.data);
-
-        for v in u.edges.iter() {
-            let mut v_mut = v.borrow_mut();
-            if v_mut.data.color == Color::White {
-                v_mut.data.color = Color::Gray;
-                v_mut.data.d = Some(
-                    u.data
-                        .d
-                        .expect("we should only operate on previously visited nodes!")
-                        + 1,
-                );
-                v_mut.data.pi = Some(u.data.index);
-                queue.push(v.clone());
-            }
-        }
-        u.data.color = Color::Black;
-    }
-}
+use lista1::*;
 
 fn main() {
-    let root = init();
+    let args = env::args().collect::<Vec<String>>();
+    if args.len() != 3 {
+        println!("Usage: {} <mode> <file_path>", args[0]);
+        return;
+    }
 
-    let f = |data: &Data| {
-        println!(
-            "index: {}, color: {:?}, pi: {:?}, d: {:?}",
-            data.index, data.color, data.pi, data.d
-        );
+    let mode = &args[1];
+    let file_path = &args[2];
+
+    let graph_result = Graph::build_from_file(file_path);
+
+    let mut graph = match graph_result {
+        Ok(graph) => {
+            println!(
+                "Graph of size {} built from file: {}",
+                graph.get_n(),
+                file_path
+            );
+            graph
+        }
+        Err(e) => {
+            println!("ERROR: {}", e);
+            return;
+        }
     };
 
-    bfs(root, &f);
+    match mode.as_str() {
+        "dfs" => {
+            let mut f = |node: &Node<i32>| {
+                println!("Node: {}", node.index + 1);
+            };
+            graph.dfs(&mut f);
+        }
+        "bfs" => {
+            let mut f = |node: &Node<i32>| {
+                println!("Node: {}", node.index + 1);
+            };
+            graph.bfs(&mut f);
+        }
+        "topological" => {
+            let ordering = graph.topological_sort();
+
+            match ordering {
+                Some(ordering) => {
+                    if graph.get_n() <= 200 {
+                        println!("Topological ordering:");
+                        for i in ordering {
+                            println!("{}", i);
+                        }
+                    }
+                    println!("Graph is a DAG");
+                }
+                None => {
+                    println!("Graph is not a DAG");
+                }
+            }
+        }
+        "components" => {
+            let components = graph.find_strongly_connected_components();
+            println!(
+                "Number of strongly connected components: {}",
+                components.len()
+            );
+
+            println!("Strongly connected components:");
+            if graph.get_n() > 200 {
+                for component in components {
+                    println!("Component of size: {}", component.len());
+                }
+            } else {
+                for component in components {
+                    for node in component {
+                        print!("{} ", node + 1);
+                    }
+                    println!();
+                }
+            }
+        }
+        "bipartite" => {
+            if let Some((left, right)) = graph.get_bipartition() {
+                println!("Graph is bipartite");
+                if graph.get_n() <= 200 {
+                    println!("Left component:");
+                    for node in left {
+                        print!("{} ", node + 1);
+                    }
+                    println!();
+                    println!("Right component:");
+                    for node in right {
+                        print!("{} ", node + 1);
+                    }
+                    println!();
+                }
+            } else {
+                println!("Graph is not bipartite");
+            }
+        }
+        _ => {
+            println!("Unknown mode: {}", mode);
+        }
+    }
 }
