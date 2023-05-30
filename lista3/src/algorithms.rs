@@ -1,24 +1,17 @@
+use petgraph::algo::Measure;
+use petgraph::graph::NodeIndex;
+use petgraph::visit::{
+    EdgeRef, IntoEdges, IntoNodeIdentifiers, NodeIndexable, VisitMap, Visitable,
+};
+use petgraph::{Graph, Incoming, Undirected};
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
-use petgraph::graph::NodeIndex;
-use petgraph::visit::{IntoEdges, IntoNodeIdentifiers, VisitMap, Visitable};
-use petgraph::algo::Measure;
-use petgraph::Incoming;
 
-pub fn dijkstra<G, F, K>(
-    graph: G,
-    start: NodeIndex,
-    mut edge_cost: F,
-) -> Vec<K>
-    where
-        G: IntoEdges + IntoNodeIdentifiers + Visitable,
-        F: FnMut(G::EdgeRef, G::NodeId) -> K,
-        K: Measure + Copy,
-{
-    let mut scores = vec![K::max(); graph.node_bound()];
+pub fn dijkstra(graph: &Graph<(), u64, Undirected>, start: NodeIndex) -> Vec<u64> {
+    let mut scores = vec![u64::MAX; graph.node_bound()];
     let mut visit_next = BinaryHeap::new();
     let mut visited = graph.visit_map();
-    let start_score = K::default();
+    let start_score = 0;
     scores[start.index()] = start_score;
     visit_next.push(NoOrd(start_score, start));
 
@@ -31,7 +24,7 @@ pub fn dijkstra<G, F, K>(
             if visited.is_visited(&next) {
                 continue;
             }
-            let next_score = scores[node.index()] + edge_cost(edge, next);
+            let next_score = scores[node.index()] + edge.weight();
             let old_next_score = scores[next.index()];
             if next_score < old_next_score {
                 scores[next.index()] = next_score;

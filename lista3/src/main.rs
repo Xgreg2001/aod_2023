@@ -1,10 +1,17 @@
+use crate::algorithms::dijkstra;
 use crate::parsing::parse_ss;
+use indicatif::ProgressBar;
 use parsing::parse_dimacs_gr_to_petgraph;
-use std::fs::read_to_string;
+use petgraph::graph::NodeIndex;
+use petgraph::visit::NodeCount;
+use std::cmp::{max, min};
+use std::fs::{read_to_string, File};
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
-mod parsing;
 mod algorithms;
+mod parsing;
 
 fn main() {
     let args = match parse_args() {
@@ -15,27 +22,88 @@ fn main() {
         }
     };
 
-    let data = read_to_string(args.gr_path).unwrap();
+    let gr_path = args.gr_path;
+    if let Some(ss_path) = args.ss_path {
+        let data = read_to_string(&gr_path).unwrap();
 
-    let graph = parse_dimacs_gr_to_petgraph(data.as_str()).unwrap();
+        let graph = parse_dimacs_gr_to_petgraph(data.as_str()).unwrap();
 
-    let ss_contents = read_to_string(args.ss_path.unwrap()).unwrap();
+        let ss_contents = read_to_string(&ss_path).unwrap();
 
-    let (_, ss_config) = parse_ss(ss_contents.as_str()).unwrap();
+        let (_, ss_config) = parse_ss(ss_contents.as_str()).unwrap();
 
-    println!(
-        "parsed graph with {} nodes and {} edges.",
-        graph.node_count(),
-        graph.edge_count()
-    );
-    println!("ss config: {:?}", ss_config)
+        println!(
+            "parsed graph with {} nodes and {} edges.",
+            graph.node_count(),
+            graph.edge_count()
+        );
+
+        let mut times: Vec<Duration> = Vec::with_capacity(ss_config.num_sources);
+
+        let mut min_cost = u64::MAX;
+        let mut max_cost = u64::MIN;
+
+        let bar = ProgressBar::new(ss_config.sources.len() as u64);
+
+        for source in ss_config.sources {
+            let start_node = NodeIndex::new(source);
+            let now = Instant::now();
+            let distances = dijkstra(&graph, start_node);
+            let elapsed = now.elapsed();
+            times.push(elapsed);
+
+            for v in distances {
+                if v > max_cost {
+                    max_cost = v;
+                }
+                if v < min_cost {
+                    min_cost = v;
+                }
+            }
+
+            bar.inc(1);
+        }
+
+        bar.finish();
+
+        let count: f64 = times.len() as f64;
+        let mean_time_millis: f64 =
+            times.into_iter().map(|d| d.as_millis() as f64).sum::<f64>() / count;
+
+        if let Some(oss_path) = args.oss_path {
+            let mut result_file = File::create(oss_path).unwrap();
+
+            writeln!(result_file, "f {} {}", gr_path.display(), ss_path.display()).unwrap();
+            writeln!(
+                result_file,
+                "g {} {} {} {}",
+                graph.node_count(),
+                graph.edge_count(),
+                min_cost,
+                max_cost
+            )
+            .unwrap();
+
+            writeln!(result_file, "t {}", mean_time_millis).unwrap();
+        } else {
+            println!("f {} {}", gr_path.display(), ss_path.display());
+            println!(
+                "g {} {} {} {}",
+                graph.node_count(),
+                graph.edge_count(),
+                min_cost,
+                max_cost
+            );
+            println!("t {}", mean_time_millis);
+        }
+    }
 }
 
 #[derive(Debug)]
 struct AppArgs {
     gr_path: PathBuf,
     ss_path: Option<PathBuf>,
-    oss_path: Option<PathBuf>
+    oss_path: Option<PathBuf>,
 }
 
 const HELP: &str = "\

@@ -10,7 +10,7 @@ use std::collections::{HashMap};
 struct GraphEdge {
     source: usize,
     target: usize,
-    weight: i32,
+    weight: u64,
 }
 
 #[derive(Debug)]
@@ -62,7 +62,7 @@ fn parse_edge(input: &str) -> IResult<&str, GraphEdge> {
         multispace1,
         map_res(digit1, str::parse::<usize>),
         multispace1,
-        map_res(digit1, str::parse::<i32>),
+        map_res(digit1, str::parse::<u64>),
         line_ending,
     ))(input)?;
     Ok((
@@ -124,7 +124,7 @@ pub fn parse_ss(input: &str) -> IResult<&str, ProblemSpec> {
             match parse_source(remaining_input) {
                 Ok((input, source)) => {
                     remaining_input = input;
-                    sources.push(source);
+                    sources.push(source - 1);
                 }
                 Err(_) => {
                     break;
@@ -142,10 +142,10 @@ pub fn parse_ss(input: &str) -> IResult<&str, ProblemSpec> {
     ))
 }
 
-pub fn parse_dimacs_gr_to_petgraph(input: &str) -> Result<Graph<(), i32, Undirected>, String> {
+pub fn parse_dimacs_gr_to_petgraph(input: &str) -> Result<Graph<(), u64, Undirected>, String> {
     match parse_dimacs_gr(input) {
         Ok((_, (num_nodes, num_edges, edges))) => {
-            let mut graph = Graph::<(), i32, Undirected>::with_capacity(num_nodes, num_edges);
+            let mut graph = Graph::<(), u64, Undirected>::with_capacity(num_nodes, num_edges);
             let mut nodes = HashMap::with_capacity(num_nodes);
             for edge in edges {
                 let source_node = *nodes
