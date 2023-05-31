@@ -1,4 +1,4 @@
-use std::fs::{File, read_to_string};
+use std::fs::{read_to_string, File};
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -6,13 +6,8 @@ use std::time::{Duration, Instant};
 use indicatif::ProgressBar;
 use petgraph::graph::NodeIndex;
 
-use parsing::parse_dimacs_gr_to_petgraph;
-
-use crate::algorithms::{dijkstra_all, dijkstra_single};
-use crate::parsing::parse_ss;
-
-mod algorithms;
-mod parsing;
+use lista3::algorithms::{dial_all, dial_single};
+use lista3::parsing::{parse_dimacs_gr_to_petgraph, parse_p2p, parse_ss};
 
 fn main() {
     let args = match parse_args() {
@@ -40,13 +35,13 @@ fn main() {
         let bar = ProgressBar::new(ss_config.sources.len() as u64);
 
         for source in ss_config.sources {
+            bar.inc(1);
+
             let start_node = NodeIndex::new(source);
             let now = Instant::now();
-            dijkstra_all(&graph, start_node);
+            dial_all(&graph, start_node, *max_cost as usize);
             let elapsed = now.elapsed();
             times.push(elapsed);
-
-            bar.inc(1);
         }
 
         bar.finish();
@@ -83,7 +78,7 @@ fn main() {
     } else if let Some(p2p_path) = args.p2p_path {
         let p2p_contents = read_to_string(&p2p_path).unwrap();
 
-        let (_, p2p_config) = parsing::parse_p2p(p2p_contents.as_str()).unwrap();
+        let (_, p2p_config) = parse_p2p(p2p_contents.as_str()).unwrap();
 
         let min_cost = graph.edge_weights().min().unwrap();
         let max_cost = graph.edge_weights().max().unwrap();
@@ -92,14 +87,22 @@ fn main() {
 
         let mut distances = Vec::with_capacity(p2p_config.pairs.len());
 
-        for pair in &p2p_config.pairs {
+        for pair in p2p_config.pairs.iter() {
+            bar.inc(1);
+
             let start_node = NodeIndex::new(pair.0);
             let end_node = NodeIndex::new(pair.1);
-            distances.push(dijkstra_single(&graph, start_node, end_node));
-            bar.inc(1);
+            distances.push(dial_single(
+                &graph,
+                start_node,
+                end_node,
+                *max_cost as usize,
+            ));
         }
 
-        bar.finish();
+        bar.finish_and_clear();
+
+        // distances.iter().for_each(|d| println!("{:?}", d));
 
         if let Some(op2p_path) = args.op2p_path {
             let mut result_file = File::create(op2p_path).unwrap();
@@ -122,7 +125,14 @@ fn main() {
             .unwrap();
 
             for (pair, distance) in p2p_config.pairs.iter().zip(&distances) {
-                writeln!(result_file, "d {} {} {}", pair.0 + 1, pair.1 + 1, distance).unwrap();
+                writeln!(
+                    result_file,
+                    "d {} {} {}",
+                    pair.0 + 1,
+                    pair.1 + 1,
+                    distance.unwrap_or(usize::MAX)
+                )
+                .unwrap();
             }
         } else {
             println!("f {} {}", gr_path.display(), p2p_path.display());
@@ -135,7 +145,12 @@ fn main() {
             );
 
             for (pair, distance) in p2p_config.pairs.iter().zip(&distances) {
-                println!("d {} {} {}", pair.0 + 1, pair.1 + 1, distance);
+                println!(
+                    "d {} {} {}",
+                    pair.0 + 1,
+                    pair.1 + 1,
+                    distance.unwrap_or(usize::MAX)
+                );
             }
         }
     }
