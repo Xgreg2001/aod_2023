@@ -1,11 +1,12 @@
+use std::collections::HashMap;
+
 use nom::{
     bytes::complete::tag, character::complete::digit1, character::complete::line_ending,
-    character::complete::multispace1, combinator::map_res, combinator::opt, sequence::tuple,
-    IResult,
+    character::complete::multispace1, combinator::map_res, combinator::opt, IResult,
+    sequence::tuple,
 };
 use petgraph::Graph;
 use petgraph::Undirected;
-use std::collections::HashMap;
 
 #[derive(Debug)]
 struct GraphEdge {

@@ -1,14 +1,15 @@
-use crate::algorithms::{dijkstra_all, dijkstra_single};
-use crate::parsing::parse_ss;
-use indicatif::ProgressBar;
-use parsing::parse_dimacs_gr_to_petgraph;
-use petgraph::graph::NodeIndex;
-use petgraph::visit::NodeCount;
-use std::cmp::{max, min};
-use std::fs::{read_to_string, File};
-use std::io::{BufWriter, Write};
+use std::fs::{File, read_to_string};
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+
+use indicatif::ProgressBar;
+use petgraph::graph::NodeIndex;
+
+use parsing::parse_dimacs_gr_to_petgraph;
+
+use crate::algorithms::{dijkstra_all, dijkstra_single};
+use crate::parsing::parse_ss;
 
 mod algorithms;
 mod parsing;

@@ -1,11 +1,9 @@
-use petgraph::algo::Measure;
-use petgraph::graph::{Node, NodeIndex};
-use petgraph::visit::{
-    EdgeRef, IntoEdges, IntoNodeIdentifiers, NodeIndexable, VisitMap, Visitable,
-};
-use petgraph::{Graph, Incoming, Undirected};
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
+
+use petgraph::graph::NodeIndex;
+use petgraph::visit::{EdgeRef, NodeIndexable, VisitMap, Visitable};
+use petgraph::{Graph, Undirected};
 
 pub fn dijkstra_all(graph: &Graph<(), u64, Undirected>, start: NodeIndex) -> Vec<u64> {
     let mut scores = vec![u64::MAX; graph.node_bound()];
