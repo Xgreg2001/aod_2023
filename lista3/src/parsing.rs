@@ -1,10 +1,11 @@
 use nom::{
-    bytes::complete::tag, character::complete::digit1, character::complete::line_ending, character::complete::multispace1, combinator::map_res,
-    combinator::opt, sequence::tuple, IResult,
+    bytes::complete::tag, character::complete::digit1, character::complete::line_ending,
+    character::complete::multispace1, combinator::map_res, combinator::opt, sequence::tuple,
+    IResult,
 };
 use petgraph::Graph;
 use petgraph::Undirected;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 struct GraphEdge {
@@ -14,9 +15,14 @@ struct GraphEdge {
 }
 
 #[derive(Debug)]
-pub struct ProblemSpec {
+pub struct ProblemSpecSS {
     pub num_sources: usize,
     pub sources: Vec<usize>,
+}
+
+pub struct ProblemSpecP2P {
+    pub num_pairs: usize,
+    pub pairs: Vec<(usize, usize)>,
 }
 
 fn parse_comment(input: &str) -> IResult<&str, ()> {
@@ -105,7 +111,7 @@ fn parse_dimacs_gr(input: &str) -> IResult<&str, (usize, usize, Vec<GraphEdge>)>
     Ok((remaining_input, (num_nodes, num_edges, edges)))
 }
 
-pub fn parse_ss(input: &str) -> IResult<&str, ProblemSpec> {
+pub fn parse_ss(input: &str) -> IResult<&str, ProblemSpecSS> {
     let mut remaining_input = input;
     // remove all comments from the be of the file
     while let Ok((input, Some(_))) = opt(parse_comment)(remaining_input) {
@@ -135,11 +141,69 @@ pub fn parse_ss(input: &str) -> IResult<&str, ProblemSpec> {
 
     Ok((
         remaining_input,
-        ProblemSpec {
+        ProblemSpecSS {
             num_sources,
             sources,
         },
     ))
+}
+
+pub fn parse_p2p(input: &str) -> IResult<&str, ProblemSpecP2P> {
+    let mut remaining_input = input;
+    // remove all comments from the be of the file
+    while let Ok((input, Some(_))) = opt(parse_comment)(remaining_input) {
+        remaining_input = input;
+    }
+
+    let (mut remaining_input, num_pairs) = parse_problem_p2p(remaining_input)?;
+
+    let mut pairs = Vec::with_capacity(num_pairs);
+
+    loop {
+        if let Ok((input, Some(_))) = opt(parse_comment)(remaining_input) {
+            remaining_input = input;
+            continue;
+        } else {
+            match parse_pair(remaining_input) {
+                Ok((input, pair)) => {
+                    remaining_input = input;
+                    pairs.push(pair);
+                }
+                Err(_) => {
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok((remaining_input, ProblemSpecP2P { num_pairs, pairs }))
+}
+
+fn parse_pair(input: &str) -> IResult<&str, (usize, usize)> {
+    let (input, (_, _, source, _, target, _)) = tuple((
+        tag("q"),
+        multispace1,
+        map_res(digit1, str::parse::<usize>),
+        multispace1,
+        map_res(digit1, str::parse::<usize>),
+        line_ending,
+    ))(input)?;
+    Ok((
+        input,
+        (
+            source - 1,
+            target - 1,
+        ),
+    ))
+}
+
+fn parse_problem_p2p(input: &str) -> IResult<&str, usize> {
+    let (input, (_, num_sources, _)) = tuple((
+        tag("p aux sp p2p "),
+        map_res(digit1, str::parse::<usize>),
+        line_ending,
+    ))(input)?;
+    Ok((input, num_sources))
 }
 
 pub fn parse_dimacs_gr_to_petgraph(input: &str) -> Result<Graph<(), u64, Undirected>, String> {
