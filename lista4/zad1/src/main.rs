@@ -6,6 +6,7 @@ use rand::Rng;
 use std::cmp;
 use std::collections::HashMap;
 use std::time::Duration;
+use petgraph::visit::Visitable;
 
 fn main() {
     env_logger::init();
