@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashSet};
+use std::collections::BinaryHeap;
 
 use petgraph::graph::NodeIndex;
 use petgraph::visit::{EdgeRef, NodeIndexable, VisitMap, Visitable};
