@@ -1,12 +1,16 @@
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::debug;
+use petgraph::graph::{node_index, NodeIndex};
 use petgraph::graphmap::DiGraphMap;
+use petgraph::visit::Visitable;
 use rand::Rng;
 use std::cmp;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::path::PathBuf;
 use std::time::Duration;
-use petgraph::visit::Visitable;
 
 fn main() {
     env_logger::init();
@@ -17,6 +21,14 @@ fn main() {
     println!("k: {}", k);
 
     let mut graph = initialize_graph(k);
+
+    if let Some(path) = cli.glpk {
+        let file = std::fs::File::create(path).unwrap();
+
+        let mut writer = std::io::BufWriter::new(file);
+
+        write_lp_model(&mut writer, &graph, k);
+    }
 
     let now = std::time::Instant::now();
     let (flow, paths) = edmonds_karp(&mut graph, 0, 2usize.pow(k as u32) - 1);
@@ -33,6 +45,71 @@ fn main() {
         elapsed.as_secs(),
         elapsed.subsec_millis()
     );
+}
+
+fn write_lp_model(writer: &mut BufWriter<File>, graph: &DiGraphMap<usize, Edge>, k: usize) {
+    // print variables
+    writeln!(writer, "/* Variables */").unwrap();
+    for edge in graph.all_edges() {
+        if edge.2.cap != 0 {
+            writeln!(writer, "var x_{}_{} >= 0;", edge.0, edge.1).unwrap();
+        }
+    }
+
+    // print objective function
+    writeln!(writer, "/* Objective function */").unwrap();
+    let objectives: String = graph
+        .edges(0)
+        .filter(|edge| edge.2.cap != 0)
+        .map(|edge| format!("x_{}_{}", edge.0, edge.1))
+        .collect::<Vec<String>>()
+        .join(" + ");
+    writeln!(writer, "maximize obj: {};", objectives).unwrap();
+
+    // print constraints
+    writeln!(writer, "/* Constraints */").unwrap();
+
+    // Flow capacity constraints
+    writeln!(writer, "/* Flow capacity constraints */").unwrap();
+    for node in graph.nodes() {
+        for edge in graph.edges(node) {
+            if edge.2.cap != 0 {
+                writeln!(
+                    writer,
+                    "s.t. c_{}_{}: x_{}_{} <= {};",
+                    edge.0, edge.1, edge.0, edge.1, edge.2.cap
+                )
+                .unwrap();
+            }
+        }
+    }
+
+    // Flow conservation constraints
+    writeln!(writer, "/* Flow conservation constraints */").unwrap();
+    for node in graph.nodes() {
+        let incoming: String = graph
+            .edges_directed(node, petgraph::Direction::Incoming)
+            .filter(|edge| edge.2.cap != 0)
+            .map(|edge| format!("x_{}_{}", edge.0, edge.1))
+            .collect::<Vec<String>>()
+            .join(" + ");
+
+        let outgoing: String = graph
+            .edges_directed(node, petgraph::Direction::Outgoing)
+            .filter(|edge| edge.2.cap != 0)
+            .map(|edge| format!("x_{}_{}", edge.0, edge.1))
+            .collect::<Vec<String>>()
+            .join(" + ");
+
+        if incoming != "" && outgoing != "" {
+            writeln!(writer, "s.t. node_{}: {} = {};", node, incoming, outgoing).unwrap();
+        }
+    }
+
+    writeln!(writer, "solve;").unwrap();
+    writeln!(writer, "display {};", objectives).unwrap();
+
+    writeln!(writer, "end;").unwrap();
 }
 
 #[derive(Clone, Copy)]
@@ -207,4 +284,8 @@ struct Args {
     /// Whether to print the flow graph
     #[arg(long = "printFlow")]
     print_flow: bool,
+
+    /// Whether to print glpk output
+    #[arg(long = "glpk")]
+    glpk: Option<PathBuf>,
 }

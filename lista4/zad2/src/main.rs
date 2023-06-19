@@ -6,14 +6,74 @@ use petgraph::Undirected;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::collections::VecDeque;
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::path::PathBuf;
 
 fn main() {
     let args = Cli::parse();
 
     let (graph, u, v) = generate_bipartite_graph(args.k, args.i);
+
+    if let Some(path) = args.glpk {
+        let file = std::fs::File::create(path).unwrap();
+
+        let mut writer = std::io::BufWriter::new(file);
+
+        write_lp_model(&mut writer, &graph, &u, &v);
+    }
+
     let matching = max_bipartite_matching(&graph, &u, &v, args.print_matching);
 
     println!("Matching: {}", matching);
+}
+
+fn write_lp_model(
+    writer: &mut BufWriter<File>,
+    graph: &Graph<u32, u32, Undirected>,
+    u: &Vec<NodeIndex>,
+    v: &Vec<NodeIndex>,
+) {
+    // print variables
+    writeln!(writer, "/* Variables */").unwrap();
+    for edge in graph.edge_references() {
+        writeln!(
+            writer,
+            "var x_{}_{} binary;",
+            edge.source().index(),
+            edge.target().index()
+        )
+        .unwrap();
+    }
+
+    // print objective function
+    writeln!(writer, "/* Objective function */").unwrap();
+    let objectives: String = graph
+        .edge_references()
+        .map(|edge| format!("x_{}_{}", edge.source().index(), edge.target().index()))
+        .collect::<Vec<String>>()
+        .join(" + ");
+
+    writeln!(writer, "maximize obj: {};", objectives).unwrap();
+
+    // print constraints
+    writeln!(writer, "/* Constraints */").unwrap();
+    for node in u {
+        let constraints: String = graph
+            .edges(*node)
+            .map(|edge| format!("x_{}_{}", edge.source().index(), edge.target().index()))
+            .collect::<Vec<String>>()
+            .join(" + ");
+        if constraints.is_empty() {
+            continue;
+        }
+        writeln!(writer, "s.t. c_{}: {} <= 1;", node.index(), constraints).unwrap();
+    }
+
+    writeln!(writer, "solve;").unwrap();
+    writeln!(writer, "display {};", objectives).unwrap();
+
+    writeln!(writer, "end;").unwrap();
 }
 
 fn bfs(
@@ -165,4 +225,6 @@ struct Cli {
     i: usize,
     #[arg(long = "printMatching")]
     print_matching: bool,
+    #[arg(long = "glpk")]
+    glpk: Option<PathBuf>,
 }
