@@ -3,14 +3,11 @@ use indicatif::{ProgressBar, ProgressStyle};
 use log::debug;
 use petgraph::graphmap::DiGraphMap;
 use rand::Rng;
-use std::cell::RefCell;
 use std::cmp;
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::ops::Deref;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::time::Duration;
 
 fn main() {
@@ -336,11 +333,11 @@ fn send_flow(
 
             if let Some(temp_flow) = send_flow(graph, v, t, curr_flow, start, level) {
                 // add flow  to current edge
-                let mut edge = graph.edge_weight_mut(u, v).unwrap();
+                let edge = graph.edge_weight_mut(u, v).unwrap();
                 edge.flow += temp_flow;
                 // subtract flow from reverse edge
                 // of current edge
-                let mut rev_edge = graph.edge_weight_mut(v, u).unwrap();
+                let rev_edge = graph.edge_weight_mut(v, u).unwrap();
                 rev_edge.flow -= temp_flow;
 
                 return Some(temp_flow);
