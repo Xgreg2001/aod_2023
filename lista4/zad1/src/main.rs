@@ -1,15 +1,16 @@
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::debug;
-use petgraph::graph::{node_index, NodeIndex};
 use petgraph::graphmap::DiGraphMap;
-use petgraph::visit::Visitable;
 use rand::Rng;
+use std::cell::RefCell;
 use std::cmp;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::ops::Deref;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::Duration;
 
 fn main() {
@@ -23,15 +24,21 @@ fn main() {
     let mut graph = initialize_graph(k);
 
     if let Some(path) = cli.glpk {
-        let file = std::fs::File::create(path).unwrap();
+        let file = File::create(path).unwrap();
 
-        let mut writer = std::io::BufWriter::new(file);
+        let mut writer = BufWriter::new(file);
 
-        write_lp_model(&mut writer, &graph, k);
+        write_lp_model(&mut writer, &graph);
     }
 
+    let algo = cli.algo;
+
     let now = std::time::Instant::now();
-    let (flow, paths) = edmonds_karp(&mut graph, 0, 2usize.pow(k as u32) - 1);
+    let (flow, paths) = match algo.as_str() {
+        "edmonds-karp" => edmonds_karp(&mut graph, 0, 2usize.pow(k as u32) - 1),
+        "dinic" => dinic(&mut graph, 0, 2usize.pow(k as u32) - 1),
+        _ => panic!("Unknown algorithm: {}", algo),
+    };
     let elapsed = now.elapsed();
 
     if cli.print_flow {
@@ -47,7 +54,7 @@ fn main() {
     );
 }
 
-fn write_lp_model(writer: &mut BufWriter<File>, graph: &DiGraphMap<usize, Edge>, k: usize) {
+fn write_lp_model(writer: &mut BufWriter<File>, graph: &DiGraphMap<usize, Edge>) {
     // print variables
     writeln!(writer, "/* Variables */").unwrap();
     for edge in graph.all_edges() {
@@ -273,6 +280,109 @@ fn edmonds_karp(graph: &mut DiGraphMap<usize, Edge>, s: usize, t: usize) -> (i32
     (flow, augmenting_paths_count)
 }
 
+fn dinic(graph: &mut DiGraphMap<usize, Edge>, s: usize, t: usize) -> (i32, usize) {
+    let node_count = graph.node_count();
+    let mut augmenting_paths_count = 0;
+    let mut level = vec![-1; node_count];
+
+    // Corner case
+    if s == t {
+        return (-1, augmenting_paths_count);
+    }
+
+    let mut max_flow = 0; // Initialize result
+
+    // Augment the flow while there is path
+    // from source to sink
+    while bfs(graph, s, t, &mut level) == true {
+        // store how many edges are visited
+        // from V { 0 to V }
+        let mut start = vec![0usize; node_count];
+
+        // while flow is not zero in graph from S to D
+        while let Some(flow) = send_flow(graph, s, t, i32::MAX, &mut start, &mut level) {
+            // Add path flow to overall flow
+            augmenting_paths_count += 1;
+            max_flow += flow;
+        }
+    }
+
+    // return maximum flow
+    return (max_flow, augmenting_paths_count);
+}
+
+fn send_flow(
+    graph: &mut DiGraphMap<usize, Edge>,
+    u: usize,
+    t: usize,
+    flow: i32,
+    start: &mut Vec<usize>,
+    level: &mut Vec<i32>,
+) -> Option<i32> {
+    // Sink reached
+    if u == t {
+        return Some(flow);
+    }
+
+    // Traverse all adjacent edges one -by - one.
+    while start[u] < graph.neighbors(u).count() {
+        // Pick next edge from adjacency list of u
+        let (_, v, e) = graph.edges(u).nth(start[u]).unwrap();
+
+        if level[v] == level[u] + 1 && e.flow < e.cap {
+            // find minimum flow from u to t
+            let curr_flow = cmp::min(e.cap - e.flow, flow);
+
+            if let Some(temp_flow) = send_flow(graph, v, t, curr_flow, start, level) {
+                // add flow  to current edge
+                let mut edge = graph.edge_weight_mut(u, v).unwrap();
+                edge.flow += temp_flow;
+                // subtract flow from reverse edge
+                // of current edge
+                let mut rev_edge = graph.edge_weight_mut(v, u).unwrap();
+                rev_edge.flow -= temp_flow;
+
+                return Some(temp_flow);
+            }
+        }
+        start[u] += 1;
+    }
+
+    None
+}
+
+fn bfs(graph: &DiGraphMap<usize, Edge>, s: usize, t: usize, level: &mut Vec<i32>) -> bool {
+    for i in 0..level.len() {
+        level[i] = -1;
+    }
+
+    level[s] = 0; // Level of source vertex
+
+    // Create a queue, enqueue source vertex
+    // and mark source vertex as visited here
+    // level[] array works as visited array also.
+    let mut q = VecDeque::new();
+    q.push_back(s);
+
+    while let Some(u) = q.pop_front() {
+        for i in graph.neighbors(u) {
+            let e = graph.edge_weight(u, i).unwrap();
+            if level[i] < 0 && e.flow < e.cap {
+                level[i] = level[u] + 1;
+                q.push_back(i);
+            }
+        }
+    }
+
+    // IF we can not reach to the sink we
+    // return false else true
+    if level[t] < 0 {
+        false
+    } else {
+        true
+    }
+}
+
 /// Implementation of the Edmonds-Karp algorithm for finding the maximum flow in a graph
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -288,4 +398,8 @@ struct Args {
     /// Whether to print glpk output
     #[arg(long = "glpk")]
     glpk: Option<PathBuf>,
+
+    /// which algorithm to use
+    #[arg(long = "algo", default_value = "edmonds-karp")]
+    algo: String,
 }
