@@ -165,8 +165,9 @@ fn initialize_graph(k: usize) -> DiGraphMap<usize, Edge> {
     let n = 2usize.pow(k as u32);
 
     for i in 0..n {
-        for j in 0..n {
-            if i != j && (i ^ j).count_ones() == 1 && hamming_weight(i) < hamming_weight(j) {
+        for shift in 0..k {
+            let j = i ^ (1 << shift);
+            if hamming_weight(i) < hamming_weight(j) {
                 let l = *[
                     hamming_weight(i),
                     zero_count(i, k),
