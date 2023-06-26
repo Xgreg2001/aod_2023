@@ -23,10 +23,16 @@ fn main() {
         write_lp_model(&mut writer, &graph, &u, &v);
     }
 
+    let now = std::time::Instant::now();
+
     let matching = max_bipartite_matching(&graph, &u, &v, args.print_matching);
 
+    let elapsed = now.elapsed();
+
     println!("Matching: {}", matching);
+    println!("Time: {}", elapsed.as_millis());
 }
+
 
 fn write_lp_model(
     writer: &mut BufWriter<File>,
